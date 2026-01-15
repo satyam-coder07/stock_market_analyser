@@ -7,7 +7,7 @@ import yfinance as yf
 import plotly.graph_objects as go
 import os
 
-# Fix for yfinance caching issue
+os.makedirs("cache", exist_ok=True)
 yf.set_tz_cache_location("cache")
 
 st.set_page_config(page_title="Stock_Market AI", layout="wide")
@@ -15,7 +15,6 @@ st.set_page_config(page_title="Stock_Market AI", layout="wide")
 st.title("📊 Stock_Market: Multi-Agent Investment Advisor")
 st.markdown("Powered by Google Gemini 1.5 Flash and Phidata")
 
-# --- API Key Handling ---
 if "GOOGLE_API_KEY" in st.secrets:
     google_key = st.secrets["GOOGLE_API_KEY"]
 else:
@@ -27,11 +26,10 @@ else:
 if google_key:
     os.environ["GOOGLE_API_KEY"] = google_key
 
-    # --- Agent Definitions ---
     web_search_agent = Agent(
         name="Web Search Agent",
         role="Search the web for the latest financial news",
-        model=Gemini(id="gemini-flash-latest"),
+        model=Gemini(id="gemini-1.5-flash"),
         tools=[DuckDuckGo()],
         instructions=["Always include sources", "Focus on market impact"],
         markdown=True,
@@ -40,7 +38,7 @@ if google_key:
     finance_agent = Agent(
         name="Finance Agent",
         role="Get financial data and analyze stocks",
-        model=Gemini(id="gemini-flash-latest"),
+        model=Gemini(id="gemini-1.5-flash"),
         tools=[YFinanceTools(stock_price=True, analyst_recommendations=True, stock_fundamentals=True, historical_prices=True)],
         instructions=["Use tables to display data"],
         markdown=True,
@@ -49,7 +47,7 @@ if google_key:
     technical_agent = Agent(
         name="Technical Analyst",
         role="Analyze technical indicators and chart patterns",
-        model=Gemini(id="gemini-flash-latest"),
+        model=Gemini(id="gemini-1.5-flash"),
         tools=[YFinanceTools(technical_indicators=True, historical_prices=True)],
         instructions=["Identify support/resistance levels", "Check RSI and Moving Average crossovers"],
         markdown=True,
@@ -57,12 +55,11 @@ if google_key:
 
     multi_ai_agent = Agent(
         team=[web_search_agent, finance_agent, technical_agent],
-        model=Gemini(id="gemini-flash-latest"),
+        model=Gemini(id="gemini-1.5-flash"),
         instructions=["Combine data from news, fundamentals, and technicals to give a clear investment summary."],
         markdown=True,
     )
 
-    # --- UI & Execution ---
     with st.sidebar:
         st.header("Input")
         ticker = st.text_input("Stock Ticker", "RELIANCE.NS")
@@ -78,7 +75,6 @@ if google_key:
             if hist.empty:
                 st.error(f"Could not find data for {ticker}. Please check the symbol.")
             else:
-                # 1. Metric Cards
                 col1, col2, col3 = st.columns(3)
                 info = stock_data.info
                 if info is None:
@@ -93,13 +89,11 @@ if google_key:
                 with col3:
                     mcap = info.get('marketCap')
                     if mcap:
-                        # Format Market Cap (Trillions/Billions)
                         fmt_mcap = f"₹{mcap/1e7:.2f} Cr" if mcap < 1e12 else f"₹{mcap/1e12:.2f} T"
                         st.metric("Market Cap", fmt_mcap)
                     else:
                         st.metric("Market Cap", "N/A")
 
-                # 2. Interactive Price Chart
                 st.subheader("Price History")
                 fig = go.Figure()
                 fig.add_trace(go.Candlestick(
@@ -113,17 +107,10 @@ if google_key:
                 fig.update_layout(xaxis_rangeslider_visible=False, height=500)
                 st.plotly_chart(fig, width='stretch')
 
-                # 3. AI Analysis
                 st.subheader("AI Investment Analysis")
                 with st.spinner("Agents are analyzing market data, news, and technicals..."):
                     response_placeholder = st.empty()
-                    # Capture the streaming response
-                    full_response = ""
-                    # Note: We pass the query to the agent to trigger the tools
                     response = multi_ai_agent.run(f"Analyze {ticker} stock and give a comprehensive investment recommendation based on technicals, fundamentals, and latest news.")
-                    
-                    # Depending on phidata version, response might be an object or stream. 
-                    # Assuming standard run returns a response object with content:
                     st.markdown(response.content)
 
         except Exception as e:

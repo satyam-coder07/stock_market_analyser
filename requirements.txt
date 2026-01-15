@@ -1,0 +1,9 @@
+phidata
+streamlit
+google-generativeai
+yfinance
+plotly
+duckduckgo-search
+packaging
+httplib2>=0.22.0
+pyparsing<3.0.0
