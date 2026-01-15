@@ -1,0 +1,6 @@
+phidata
+streamlit
+google-generativeai
+yfinance
+plotly
+duckduckgo-search
