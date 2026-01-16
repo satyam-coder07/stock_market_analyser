@@ -13,7 +13,7 @@ yf.set_tz_cache_location("cache")
 st.set_page_config(page_title="Stock_Market AI", layout="wide")
 
 st.title("📊 Stock_Market: Multi-Agent Investment Advisor")
-st.markdown("Powered by Google Gemini 1.5 Flash and Phidata")
+st.markdown("Powered by Google Gemini 2.5 Flash and Phidata")
 
 
 if "GOOGLE_API_KEY" in st.secrets:
