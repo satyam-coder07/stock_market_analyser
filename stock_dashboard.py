@@ -25,7 +25,7 @@ if api_key:
     os.environ["GROQ_API_KEY"] = api_key
 
     agent = Agent(
-        model=Groq(id="llama-3.3-70b-versatile"),
+        model=Groq(id="llama-3.1-8b-instant"),
         tools=[
             YFinanceTools(stock_price=True, analyst_recommendations=True, stock_fundamentals=True, historical_prices=True),
             DuckDuckGo()
