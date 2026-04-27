@@ -13,7 +13,7 @@ yf.set_tz_cache_location("cache")
 st.set_page_config(page_title="Stock_Market AI", layout="wide")
 
 st.title("📊 Stock_Market: AI Investment Advisor")
-st.markdown("Powered by Groq (Llama 3.3 70B) and Phidata")
+st.markdown("Powered by Groq (Llama 3.1 8B) and Phidata")
 
 with st.sidebar:
     st.header("Configuration")
@@ -86,18 +86,30 @@ if api_key:
                 st.subheader("AI Investment Analysis")
                 with st.spinner("Agent is analyzing market data, news, and fundamentals..."):
                     retry_count = 0
-                    while True:
-                        try:
-                            response = agent.run(f"Analyze {ticker} stock and give a comprehensive investment recommendation based on technicals, fundamentals, and latest news.")
-                            break
-                        except Exception as e:
-                            if "Too Many Requests" in str(e) and retry_count < 5:
-                                time.sleep(2 ** retry_count)
-                                retry_count += 1
-                            else:
-                                raise e
+                    max_retries = 3
                     
-                    st.markdown(response.content)
+                    while retry_count <= max_retries:
+                        try:
+                            prompt = f"Analyze {ticker} stock and give a concise investment recommendation based on technicals, fundamentals, and latest news. Limit your tool usage to the essentials."
+                            response = agent.run(prompt)
+                            st.markdown(response.content)
+                            break
+                            
+                        except Exception as e:
+                            error_msg = str(e).lower()
+                            if "too many requests" in error_msg or "429" in error_msg or "rate limit" in error_msg:
+                                if retry_count < max_retries:
+                                    wait_time = 60
+                                    st.warning(f"Groq API rate limit reached. Pausing for {wait_time} seconds to let it reset (Attempt {retry_count + 1}/{max_retries})...")
+                                    time.sleep(wait_time)
+                                    retry_count += 1
+                                    st.empty() 
+                                else:
+                                    st.error("Rate limit exceeded multiple times. Please try a smaller timeframe or wait a few minutes before trying again.")
+                                    break
+                            else:
+                                st.error(f"An unexpected error occurred: {str(e)}")
+                                break
 
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
