@@ -8,12 +8,15 @@ import plotly.graph_objects as go
 import os
 import time
 
+# Ensure cache directory exists
+if not os.path.exists("cache"):
+    os.makedirs("cache")
 yf.set_tz_cache_location("cache")
 
 st.set_page_config(page_title="Stock_Market AI", layout="wide")
 
 st.title("📊 Stock_Market: AI Investment Advisor")
-st.markdown("Powered by Groq (Llama 3.1 8B) and Phidata")
+st.markdown("Optimized to bypass Groq TPM Rate Limits")
 
 with st.sidebar:
     st.header("Configuration")
@@ -24,15 +27,27 @@ with st.sidebar:
 if api_key:
     os.environ["GROQ_API_KEY"] = api_key
 
+    # Optimization: Using 70b (higher limits) and restricting tool output
     agent = Agent(
-        model=Groq(id="llama-3.1-8b-instant"),
+        model=Groq(id="llama-3.3-70b-versatile"),
         tools=[
-            YFinanceTools(stock_price=True, analyst_recommendations=True, stock_fundamentals=True, historical_prices=True),
+            YFinanceTools(
+                stock_price=True, 
+                analyst_recommendations=True, 
+                stock_fundamentals=True, 
+                historical_prices=False # Set to False because we provide the chart via Streamlit
+            ),
             DuckDuckGo()
         ],
         show_tool_calls=True,
-        description="You are an investment analyst that researches stock prices, analyst recommendations, and stock fundamentals.",
-        instructions=["Use tables to display data.", "Always include sources.", "Analyze technicals and fundamentals.", "Do not generate text before calling a tool.", "Directly call the relevant tools."],
+        description="You are a concise financial analyst.",
+        instructions=[
+            "Use tables for data comparison.",
+            "Always include sources.",
+            "DO NOT request historical price tables (TPM limit risk).",
+            "Focus on analyst ratings and the latest news summary.",
+            "Keep the final response under 300 words."
+        ],
         markdown=True,
     )
 
@@ -53,9 +68,6 @@ if api_key:
             else:
                 col1, col2, col3 = st.columns(3)
                 info = stock_data.info
-                if info is None:
-                    info = {}
-                
                 current_price = hist['Close'].iloc[-1]
                 
                 with col1:
@@ -70,6 +82,7 @@ if api_key:
                     else:
                         st.metric("Market Cap", "N/A")
 
+                # Visual Chart
                 st.subheader("Price History")
                 fig = go.Figure()
                 fig.add_trace(go.Candlestick(
@@ -80,36 +93,26 @@ if api_key:
                     close=hist['Close'],
                     name='Price'
                 ))
-                fig.update_layout(xaxis_rangeslider_visible=False, height=500)
-                st.plotly_chart(fig, width='stretch')
+                fig.update_layout(xaxis_rangeslider_visible=False, height=450, template="plotly_dark")
+                st.plotly_chart(fig, use_container_width=True)
 
                 st.subheader("AI Investment Analysis")
-                with st.spinner("Agent is analyzing market data, news, and fundamentals..."):
-                    retry_count = 0
-                    max_retries = 3
+                with st.spinner("Agent analyzing news and fundamentals..."):
+                    # We pass the current price into the prompt to reduce the need for the agent to fetch it
+                    prompt = (
+                        f"The current price for {ticker} is {current_price:.2f}. "
+                        f"Summarize the analyst recommendations and find the 3 most recent news "
+                        f"headlines that could impact the price. Be very brief to save tokens."
+                    )
                     
-                    while retry_count <= max_retries:
-                        try:
-                            prompt = f"Analyze {ticker} stock and give a concise investment recommendation based on technicals, fundamentals, and latest news. Limit your tool usage to the essentials."
-                            response = agent.run(prompt)
-                            st.markdown(response.content)
-                            break
-                            
-                        except Exception as e:
-                            error_msg = str(e).lower()
-                            if "too many requests" in error_msg or "429" in error_msg or "rate limit" in error_msg:
-                                if retry_count < max_retries:
-                                    wait_time = 60
-                                    st.warning(f"Groq API rate limit reached. Pausing for {wait_time} seconds to let it reset (Attempt {retry_count + 1}/{max_retries})...")
-                                    time.sleep(wait_time)
-                                    retry_count += 1
-                                    st.empty() 
-                                else:
-                                    st.error("Rate limit exceeded multiple times. Please try a smaller timeframe or wait a few minutes before trying again.")
-                                    break
-                            else:
-                                st.error(f"An unexpected error occurred: {str(e)}")
-                                break
+                    try:
+                        response = agent.run(prompt)
+                        st.markdown(response.content)
+                    except Exception as e:
+                        if "413" in str(e) or "rate_limit" in str(e).lower():
+                            st.error("The data from Yahoo Finance is too large for the Groq Free Tier. Try a different ticker or wait 60 seconds.")
+                        else:
+                            st.error(f"Error: {e}")
 
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
