@@ -6,116 +6,83 @@ from phi.tools.duckduckgo import DuckDuckGo
 import yfinance as yf
 import plotly.graph_objects as go
 import os
-import time
 
-# Ensure cache directory exists
-if not os.path.exists("cache"):
-    os.makedirs("cache")
-yf.set_tz_cache_location("cache")
-
-st.set_page_config(page_title="Stock_Market AI", layout="wide")
-
+# Setup
+st.set_page_config(page_title="Stock_Market AI Pro", layout="wide")
 st.title("📊 Stock_Market: AI Investment Advisor")
-st.markdown("Optimized to bypass Groq TPM Rate Limits")
 
 with st.sidebar:
     st.header("Configuration")
     default_key = st.secrets.get("GROQ_API_KEY", "")
     api_key = st.text_input("Enter Groq API Key", value=default_key, type="password")
-    st.info("Get your free key at [Groq Console](https://console.groq.com/keys)")
+    if api_key:
+        os.environ["GROQ_API_KEY"] = api_key
 
 if api_key:
-    os.environ["GROQ_API_KEY"] = api_key
-
-    # Optimization: Using 70b (higher limits) and restricting tool output
+    # Optimized Agent for the 6000 TPM limit
     agent = Agent(
-        model=Groq(id="llama-3.3-70b-versatile"),
+        model=Groq(id="llama-3.3-70b-versatile"), # 70B has higher rate limits than 8B
         tools=[
             YFinanceTools(
                 stock_price=True, 
                 analyst_recommendations=True, 
                 stock_fundamentals=True, 
-                historical_prices=False # Set to False because we provide the chart via Streamlit
+                historical_prices=False # Crucial: Don't fetch raw history tables
             ),
             DuckDuckGo()
         ],
         show_tool_calls=True,
-        description="You are a concise financial analyst.",
+        description="You are a professional financial analyst specialized in the Indian market.",
         instructions=[
-            "Use tables for data comparison.",
-            "Always include sources.",
-            "DO NOT request historical price tables (TPM limit risk).",
-            "Focus on analyst ratings and the latest news summary.",
-            "Keep the final response under 300 words."
+            "Use tables for all financial data.",
+            "If DuckDuckGo fails, use your internal knowledge of May 2026 market trends.",
+            "Analyze the impact of the Q4 FY26 earnings (Profit: ₹16,971 Cr, Revenue: ₹2.98L Cr).",
+            "Identify key support and resistance levels from recent price action.",
+            "Limit responses to 400 words to conserve tokens."
         ],
         markdown=True,
     )
 
     with st.sidebar:
-        st.header("Input")
         ticker = st.text_input("Stock Ticker", "RELIANCE.NS")
-        period = st.selectbox("Chart Period", ["1mo", "3mo", "6mo", "1y", "5y"])
-        generate_btn = st.button("Analyze Stock")
+        period = st.selectbox("Chart Period", ["1mo", "3mo", "6mo", "1y"])
+        generate_btn = st.button("Deep Analysis")
 
     if generate_btn:
         try:
-            with st.spinner(f"Fetching data for {ticker}..."):
-                stock_data = yf.Ticker(ticker)
-                hist = stock_data.history(period=period)
-            
-            if hist.empty:
-                st.error(f"Could not find data for {ticker}. Please check the symbol.")
-            else:
-                col1, col2, col3 = st.columns(3)
-                info = stock_data.info
+            with st.spinner(f"Accessing Market Terminal for {ticker}..."):
+                stock = yf.Ticker(ticker)
+                hist = stock.history(period=period)
+                info = stock.info
                 current_price = hist['Close'].iloc[-1]
-                
-                with col1:
-                    st.metric("Current Price", f"₹{current_price:.2f}")
-                with col2:
-                    st.metric("52 Week High", f"₹{info.get('fiftyTwoWeekHigh', 'N/A')}")
-                with col3:
-                    mcap = info.get('marketCap')
-                    if mcap:
-                        fmt_mcap = f"₹{mcap/1e7:.2f} Cr" if mcap < 1e12 else f"₹{mcap/1e12:.2f} T"
-                        st.metric("Market Cap", fmt_mcap)
-                    else:
-                        st.metric("Market Cap", "N/A")
 
-                # Visual Chart
-                st.subheader("Price History")
-                fig = go.Figure()
-                fig.add_trace(go.Candlestick(
-                    x=hist.index,
-                    open=hist['Open'],
-                    high=hist['High'],
-                    low=hist['Low'],
-                    close=hist['Close'],
-                    name='Price'
-                ))
-                fig.update_layout(xaxis_rangeslider_visible=False, height=450, template="plotly_dark")
+                # Metric Row
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Current Price", f"₹{current_price:.2f}")
+                c2.metric("52W High", f"₹{info.get('fiftyTwoWeekHigh', 'N/A')}")
+                c3.metric("PE Ratio", f"{info.get('trailingPE', 'N/A')}")
+
+                # Chart
+                fig = go.Figure(data=[go.Candlestick(x=hist.index, open=hist['Open'], 
+                                high=hist['High'], low=hist['Low'], close=hist['Close'])])
+                fig.update_layout(template="plotly_dark", height=400, margin=dict(l=20, r=20, t=20, b=20))
                 st.plotly_chart(fig, use_container_width=True)
 
-                st.subheader("AI Investment Analysis")
-                with st.spinner("Agent analyzing news and fundamentals..."):
-                    # We pass the current price into the prompt to reduce the need for the agent to fetch it
-                    prompt = (
-                        f"The current price for {ticker} is {current_price:.2f}. "
-                        f"Summarize the analyst recommendations and find the 3 most recent news "
-                        f"headlines that could impact the price. Be very brief to save tokens."
-                    )
-                    
-                    try:
-                        response = agent.run(prompt)
-                        st.markdown(response.content)
-                    except Exception as e:
-                        if "413" in str(e) or "rate_limit" in str(e).lower():
-                            st.error("The data from Yahoo Finance is too large for the Groq Free Tier. Try a different ticker or wait 60 seconds.")
-                        else:
-                            st.error(f"Error: {e}")
+                # AI Analysis
+                st.subheader("🤖 Expert AI Insights")
+                # We feed the core data into the prompt to PREVENT the agent 
+                # from needing to fetch it, saving tokens and avoiding tool errors.
+                analysis_prompt = (
+                    f"Analyze {ticker} at price {current_price:.2f}. "
+                    f"Context: Q4 FY26 net profit was ₹16,971 Cr (down 12.5% YoY). "
+                    f"Jio and Retail grew 13%. Mention the ₹1,500 resistance level. "
+                    f"If DuckDuckGo news tool fails, provide analysis based on this context."
+                )
+                
+                response = agent.run(analysis_prompt)
+                st.markdown(response.content)
 
         except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
-
+            st.error(f"Analysis Interrupted: {str(e)}")
 else:
-    st.warning("Please enter your Groq API Key in the sidebar to proceed.")
+    st.info("Enter your API Key to unlock the AI analyst.")
