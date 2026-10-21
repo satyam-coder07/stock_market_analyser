@@ -21,7 +21,7 @@ with st.sidebar:
 if api_key:
     # Optimized Agent for the 6000 TPM limit
     agent = Agent(
-        model=Groq(id="llama-3.3-70b-versatile"), # 70B has higher rate limits than 8B
+        model=Groq(id="openai/gpt-oss-120b"), #groq stopped the versatile one
         tools=[
             YFinanceTools(
                 stock_price=True, 
